@@ -299,7 +299,7 @@
     document.addEventListener('mousemove', e => {
       if (!dragging) return;
       const rect = wrap.getBoundingClientRect();
-      const pct = Math.min(98, Math.max(2, (e.clientX - rect.left) / rect.width * 100));
+      const pct = Math.min(100, Math.max(0, (e.clientX - rect.left) / rect.width * 100));
       divider.style.left     = pct + '%';
       beforeWrap.style.width = pct + '%';
     });

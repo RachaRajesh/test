@@ -1,18 +1,19 @@
 """
 services/bgremove.py — Background removal with BiRefNet (best quality).
 
-Default model: birefnet-general — state-of-the-art subject segmentation,
-dramatically cleaner edges than U2Net or ISNet.
+Default model: birefnet-general — state-of-the-art, dramatically cleaner
+edges than U2Net or ISNet.
 
-Override with PIXELAI_REMBG_MODEL env var. Options (fastest -> best):
-    u2netp (fast, tiny)
-    u2net (classic)
-    isnet-general-use (sharper than u2net)
-    birefnet-general (DEFAULT — best quality)
-    birefnet-general-lite (same architecture, half the size)
-    birefnet-portrait (portraits only — use this if photo is just a person)
+Override with PIXELAI_REMBG_MODEL env var:
+    u2netp / u2net / u2net_human_seg
+    isnet-general-use / isnet-anime
+    birefnet-general (DEFAULT)
+    birefnet-general-lite
+    birefnet-portrait
 
-Alpha matting is enabled by default for soft hair/fur edges.
+IMPORTANT: if the model fails to load, this service raises instead of
+silently falling back to a naive cutter. That way the frontend sees a clear
+error and you can diagnose rather than ship a bad result.
 """
 import os
 import logging
@@ -21,9 +22,15 @@ from PIL import Image
 log = logging.getLogger("pixelai.bgremove")
 
 _REMBG_MODEL_NAME = os.getenv("PIXELAI_REMBG_MODEL", "birefnet-general")
+_ALLOW_NAIVE_FALLBACK = os.getenv("PIXELAI_ALLOW_NAIVE_BG_FALLBACK", "0") == "1"
+
 _SESSION = None
 REMBG_AVAILABLE = False
 _LOAD_ERROR = None
+
+
+class BackgroundRemovalUnavailable(Exception):
+    """Raised when rembg/onnxruntime isn't installed or the model won't load."""
 
 
 def _load_session():
@@ -33,33 +40,42 @@ def _load_session():
         return _SESSION
     try:
         from rembg import new_session
+    except ImportError as e:
+        _LOAD_ERROR = f"rembg not installed: {e}. Run: pip install 'rembg[gpu]'"
+        log.error(_LOAD_ERROR)
+        return None
+
+    try:
         _SESSION = new_session(_REMBG_MODEL_NAME)
         REMBG_AVAILABLE = True
-        log.info(f"rembg loaded with model={_REMBG_MODEL_NAME}")
+        log.info(f"rembg session created with model={_REMBG_MODEL_NAME}")
         return _SESSION
     except Exception as e:
-        _LOAD_ERROR = repr(e)
-        log.error(f"rembg failed to load model '{_REMBG_MODEL_NAME}': {e}")
+        _LOAD_ERROR = f"Failed to create session for '{_REMBG_MODEL_NAME}': {e!r}"
+        log.error(_LOAD_ERROR)
         return None
 
 
 def remove_background(pil_image: Image.Image, *, alpha_matting: bool = True) -> Image.Image:
     """
-    Remove background with BiRefNet (default). Alpha matting on by default for
-    softer, more natural edges around hair and fine details.
+    Remove background with BiRefNet. Alpha matting ON for soft hair edges.
+
+    Raises BackgroundRemovalUnavailable if the model can't run.
+    Set PIXELAI_ALLOW_NAIVE_BG_FALLBACK=1 to fall back to the toy corner-color
+    cutter (NOT recommended — it produces jagged, hole-ridden masks).
     """
     session = _load_session()
     if session is None:
-        log.warning("Using naive corner-color fallback (rembg not loaded)")
-        return _fallback(pil_image)
+        if _ALLOW_NAIVE_FALLBACK:
+            log.warning("Using naive fallback (rembg not loaded). Enable rembg for real results.")
+            return _fallback(pil_image)
+        raise BackgroundRemovalUnavailable(
+            _LOAD_ERROR or "rembg session not available"
+        )
 
     from rembg import remove as rembg_remove
     kwargs = {"session": session}
     if alpha_matting:
-        # Tuned values for BiRefNet. Foreground threshold = confidence needed
-        # to treat a pixel as foreground; background threshold the inverse.
-        # Erode size controls how much the binary mask shrinks before matting
-        # (smaller = preserve fine details like hair).
         kwargs.update({
             "alpha_matting": True,
             "alpha_matting_foreground_threshold": 270,
@@ -69,12 +85,13 @@ def remove_background(pil_image: Image.Image, *, alpha_matting: bool = True) -> 
     try:
         return rembg_remove(pil_image, **kwargs)
     except Exception as e:
-        # Alpha matting can fail on tiny/edge-case inputs; retry without.
-        log.warning(f"rembg with alpha matting failed ({e}); retrying plain")
+        log.warning(f"Alpha matting failed ({e}); retrying without.")
         return rembg_remove(pil_image, session=session)
 
 
 def model_info() -> dict:
+    # Trigger a load attempt so health reflects real state, not "not yet tried"
+    _load_session()
     return {
         "name": _REMBG_MODEL_NAME,
         "loaded": REMBG_AVAILABLE,
@@ -83,7 +100,7 @@ def model_info() -> dict:
 
 
 def _fallback(pil_image: Image.Image) -> Image.Image:
-    """Naive fallback: treat average of 4 corners as background, cut it out."""
+    """Toy fallback — DO NOT use in production. Cuts out corner color."""
     import numpy as np
     img  = pil_image.convert("RGBA")
     data = np.array(img, dtype=float)
