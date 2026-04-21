@@ -1,0 +1,24 @@
+# PixelAI Backend Requirements
+#
+# SETUP:
+#   python -m venv venv
+#   source venv/bin/activate     (Windows: venv\Scripts\activate)
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements.txt
+#   uvicorn main:app --reload --port 8000
+#
+# GPU SERVER (CUDA 11.8):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+#   pip install rembg[gpu]
+#   pip install basicsr realesrgan
+#   # download weights: see README
+
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
+Pillow>=9.0.0
+opencv-python>=4.7.0
+numpy>=1.23.0
+timm>=0.9.0
+rembg>=2.0.30
+python-dotenv>=1.0.0

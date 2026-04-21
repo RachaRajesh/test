@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Group3 — AI Image Editor</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+</head>
+<body>
+
+  <header id="topbar">
+    <div id="logo">
+      <span class="logo-icon">✦</span>
+      <span class="logo-text">Group3</span>
+    </div>
+
+    <div id="file-actions">
+      <label class="btn btn-ghost">
+        <i class="fa-solid fa-upload"></i> Upload Image
+        <input type="file" id="file-input" accept="image/*" hidden />
+      </label>
+      <button class="btn btn-ghost" id="new-btn"><i class="fa-solid fa-file"></i> New</button>
+      <button class="btn btn-ghost" id="save-btn"><i class="fa-solid fa-download"></i> Save</button>
+    </div>
+
+    <div id="ai-dropdown-wrapper">
+      <button class="btn btn-ai" id="ai-tools-btn">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+        AI Tools
+        <i class="fa-solid fa-chevron-down" id="ai-chevron"></i>
+      </button>
+      <div id="ai-menu" class="hidden">
+        <div class="ai-menu-header">AI-Powered Functions</div>
+        <div class="ai-menu-item" data-tool="classify">
+          <span class="ai-icon"><i class="fa-solid fa-star"></i></span>
+          <div>
+            <div class="ai-item-title">Photo Quality Classifier</div>
+            <div class="ai-item-sub">Classical CV · 1–10 score</div>
+          </div>
+        </div>
+        <div class="ai-menu-item" data-tool="remove-bg">
+          <span class="ai-icon"><i class="fa-solid fa-scissors"></i></span>
+          <div>
+            <div class="ai-item-title">Background Removal</div>
+            <div class="ai-item-sub">ISNet / U2Net · GPU</div>
+          </div>
+        </div>
+        <div class="ai-menu-item" data-tool="blur-bg">
+          <span class="ai-icon"><i class="fa-solid fa-circle-half-stroke"></i></span>
+          <div>
+            <div class="ai-item-title">Background Blur</div>
+            <div class="ai-item-sub">MiDaS Depth · GPU</div>
+          </div>
+        </div>
+        <div class="ai-menu-item" data-tool="upscale">
+          <span class="ai-icon"><i class="fa-solid fa-magnifying-glass-plus"></i></span>
+          <div>
+            <div class="ai-item-title">AI Upscaling</div>
+            <div class="ai-item-sub">Real-ESRGAN • GPU</div>
+            <select id="upscale-scale" class="inline-select">
+              <option value="2">2×</option>
+              <option value="4" selected>4×</option>
+            </select>
+          </div>
+        </div>
+        <div class="ai-menu-footer">
+          <i class="fa-solid fa-circle-info"></i>
+          <span id="server-status-indicator">Server: not checked</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Server URL config -->
+    <div id="server-config">
+      <label for="server-url-input" title="Backend URL">
+        <i class="fa-solid fa-server"></i>
+      </label>
+      <input
+        type="text"
+        id="server-url-input"
+        placeholder="http://localhost:8000"
+        spellcheck="false"
+        autocomplete="off"
+      />
+      <button class="btn btn-sm btn-ghost" id="server-url-save" title="Save & test">
+        <i class="fa-solid fa-check"></i>
+      </button>
+    </div>
+
+    <div id="canvas-info">
+      <span id="canvas-size-display">No image</span>
+      <span id="zoom-display">100%</span>
+    </div>
+  </header>
+
+  <div id="app-body">
+
+    <!-- LEFT TOOLBAR -->
+    <aside id="left-toolbar">
+      <div class="tool-group">
+        <button class="tool-btn active" data-tool="select" title="Select (V)">
+          <i class="fa-solid fa-arrow-pointer"></i>
+        </button>
+        <button class="tool-btn" data-tool="crop" title="Crop (C)">
+          <i class="fa-solid fa-crop-simple"></i>
+        </button>
+      </div>
+      <div class="tool-separator"></div>
+      <div class="tool-group">
+        <button class="tool-btn" id="undo-btn" title="Undo (Ctrl+Z)">
+          <i class="fa-solid fa-rotate-left"></i>
+        </button>
+        <button class="tool-btn" id="redo-btn" title="Redo (Ctrl+Y)">
+          <i class="fa-solid fa-rotate-right"></i>
+        </button>
+      </div>
+    </aside>
+
+    <!-- CANVAS -->
+    <main id="canvas-wrapper">
+      <div id="canvas-container">
+        <div id="drop-zone">
+          <div id="drop-content">
+            <div class="drop-icon">✦</div>
+            <h2>Drop an image here</h2>
+            <p>or <label for="file-input" class="inline-link">browse to upload</label></p>
+            <p class="drop-sub">PNG, JPG, WEBP supported</p>
+          </div>
+        </div>
+        <canvas id="base-canvas"></canvas>
+        <canvas id="overlay-canvas"></canvas>
+        <div id="crop-overlay" class="hidden">
+          <div id="crop-rect"></div>
+          <div class="crop-handle tl"></div>
+          <div class="crop-handle tr"></div>
+          <div class="crop-handle bl"></div>
+          <div class="crop-handle br"></div>
+          <div id="crop-toolbar">
+            <button id="crop-apply-btn" class="btn btn-sm btn-accent">Apply Crop</button>
+            <button id="crop-cancel-btn" class="btn btn-sm btn-ghost">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT PANEL -->
+    <aside id="right-panel">
+
+      <section class="panel-section">
+        <div class="panel-title collapsible" data-target="adj-body">
+          Adjustments <i class="fa fa-chevron-down"></i>
+        </div>
+        <div id="adj-body">
+          <div class="adj-row">
+            <label>Brightness</label>
+            <div class="slider-row">
+              <input type="range" id="adj-brightness" min="-100" max="100" value="0" />
+              <span id="adj-brightness-val">0</span>
+            </div>
+          </div>
+          <div class="adj-row">
+            <label>Contrast</label>
+            <div class="slider-row">
+              <input type="range" id="adj-contrast" min="-100" max="100" value="0" />
+              <span id="adj-contrast-val">0</span>
+            </div>
+          </div>
+          <div class="adj-row">
+            <label>Saturation</label>
+            <div class="slider-row">
+              <input type="range" id="adj-saturation" min="-100" max="100" value="0" />
+              <span id="adj-saturation-val">0</span>
+            </div>
+          </div>
+          <div class="adj-row">
+            <label>Blur</label>
+            <div class="slider-row">
+              <input type="range" id="adj-blur" min="0" max="20" value="0" />
+              <span id="adj-blur-val">0</span>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-full" id="reset-adj-btn">Reset All</button>
+        </div>
+      </section>
+
+      <section class="panel-section">
+        <div class="panel-title collapsible" data-target="ai-body">
+          AI Blur Strength <i class="fa fa-chevron-down"></i>
+        </div>
+        <div id="ai-body">
+          <div class="adj-row">
+            <label>Blur Radius</label>
+            <div class="slider-row">
+              <input type="range" id="ai-blur-radius" min="5" max="50" value="15" />
+              <span id="ai-blur-radius-val">15</span>
+            </div>
+          </div>
+          <p class="hint-text">Used when running the AI Background Blur tool.</p>
+        </div>
+      </section>
+
+      <section class="panel-section">
+        <div class="panel-title collapsible" data-target="crop-panel-body">
+          Crop Options <i class="fa fa-chevron-down"></i>
+        </div>
+        <div id="crop-panel-body">
+          <label class="option-label">Aspect Ratio</label>
+          <div class="btn-group wrap">
+            <button class="ratio-btn active" data-ratio="free">Free</button>
+            <button class="ratio-btn" data-ratio="1:1">1:1</button>
+            <button class="ratio-btn" data-ratio="4:3">4:3</button>
+            <button class="ratio-btn" data-ratio="16:9">16:9</button>
+          </div>
+          <p class="hint-text" style="margin-top:8px">Select Crop tool then drag on image.</p>
+        </div>
+      </section>
+
+      <section class="panel-section">
+        <div class="panel-title collapsible" data-target="history-body">
+          History <i class="fa fa-chevron-down"></i>
+        </div>
+        <div id="history-body">
+          <ul id="history-list">
+            <li class="history-item active">Original</li>
+          </ul>
+        </div>
+      </section>
+
+    </aside>
+  </div>
+
+  <div id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
