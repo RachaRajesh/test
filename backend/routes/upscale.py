@@ -1,10 +1,16 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
+from PIL import Image
 from services.upscale import upscale_image
 from utils.image_io import save_upload, load_pil_image, save_output
 from . import validate_upload
 
 router = APIRouter()
+
+# Per-route input cap: output size = input * scale, and PNG gets huge.
+# 1024 → x4 → 4096px longest edge, which is the practical ceiling for a demo.
+UPSCALE_INPUT_MAX = 1024
+
 
 @router.post("/")
 async def upscale(
@@ -15,7 +21,7 @@ async def upscale(
     if scale not in (2, 4):
         raise HTTPException(status_code=400, detail="Scale must be 2 or 4")
     path           = await save_upload(file)
-    img            = load_pil_image(path)
+    img            = load_pil_image(path, max_dim=UPSCALE_INPUT_MAX)
     result, method = upscale_image(img, scale=scale)
     out            = save_output(result, suffix=f"_x{scale}", fmt="PNG")
     return FileResponse(

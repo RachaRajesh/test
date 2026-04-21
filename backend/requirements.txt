@@ -1,17 +1,27 @@
 # PixelAI Backend Requirements
 #
-# SETUP:
+# LOCAL / CPU:
 #   python -m venv venv
-#   source venv/bin/activate     (Windows: venv\Scripts\activate)
+#   source venv/bin/activate
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 #   pip install -r requirements.txt
-#   uvicorn main:app --reload --port 8000
+#   pip install "rembg[cpu]"
+#   uvicorn main:app --host 0.0.0.0 --port 8000
 #
-# GPU SERVER (CUDA 11.8):
+# GPU SERVER (CUDA 11.8, Viper):
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-#   pip install rembg[gpu]
+#   pip install -r requirements.txt
+#   pip install "rembg[gpu]"
 #   pip install basicsr realesrgan
-#   # download weights: see README
+#   # Real-ESRGAN weights:
+#   mkdir -p backend/models/weights
+#   wget https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth \
+#        -O backend/models/weights/RealESRGAN_x2plus.pth
+#   wget https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth \
+#        -O backend/models/weights/RealESRGAN_x4plus.pth
+#
+# BiRefNet model weights download on first use (~900MB). If you want to
+# pre-download: python -c "from rembg import new_session; new_session('birefnet-general')"
 
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0
@@ -20,5 +30,6 @@ Pillow>=9.0.0
 opencv-python>=4.7.0
 numpy>=1.23.0
 timm>=0.9.0
-rembg>=2.0.30
+# rembg NOT listed here — install explicitly with [cpu] or [gpu] extras
+# so onnxruntime variant matches hardware
 python-dotenv>=1.0.0

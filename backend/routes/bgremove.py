@@ -9,7 +9,7 @@ router = APIRouter()
 @router.post("/")
 async def remove_bg(
     file: UploadFile = File(...),
-    alpha_matting: bool = Form(default=True),
+    alpha_matting: bool = Form(default=False),
 ):
     validate_upload(file)
     path   = await save_upload(file)

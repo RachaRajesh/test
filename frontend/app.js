@@ -185,15 +185,30 @@
     img.src = url;
   }
 
-  function setupCanvases(w, h) {
+  function setupCanvases(w, h, preserveDisplay = false) {
+    // When preserveDisplay is true, keep the on-screen pixel size the canvas
+    // currently occupies and recompute zoom so the new image fills the same
+    // visible area. This prevents AI tools from making the canvas visually
+    // jump (especially upscale, where bitmap dimensions change drastically).
+    let prevDispW = null, prevDispH = null;
+    if (preserveDisplay && imageLoaded) {
+      prevDispW = imageW * zoom;
+      prevDispH = imageH * zoom;
+    }
+
     imageW = w; imageH = h;
 
-    // Auto-fit zoom to viewport
-    const wrapper = document.getElementById('canvas-wrapper');
-    const maxW = wrapper.clientWidth  - 48;
-    const maxH = wrapper.clientHeight - 48;
-    zoom = Math.min(1, maxW / w, maxH / h);
-    zoom = Math.round(zoom * 100) / 100;
+    if (preserveDisplay && prevDispW !== null) {
+      // Fit the new bitmap into the same displayed box
+      zoom = Math.min(prevDispW / w, prevDispH / h);
+    } else {
+      // Auto-fit zoom to viewport (normal behavior on upload/crop)
+      const wrapper = document.getElementById('canvas-wrapper');
+      const maxW = wrapper.clientWidth  - 48;
+      const maxH = wrapper.clientHeight - 48;
+      zoom = Math.min(1, maxW / w, maxH / h);
+    }
+    zoom = Math.round(zoom * 1000) / 1000;
     document.getElementById('zoom-display').textContent = Math.round(zoom * 100) + '%';
 
     [baseCanvas, overlayCanvas].forEach((c, i) => {
@@ -662,40 +677,45 @@
       const prevH = imageH;
 
       img.onload = () => {
-        if (tool === 'upscale') {
-          // Keep canvas at preview resolution so before/after aligns.
-          // The actual output resolution is shown in the info bar.
-          setupCanvases(prevW, prevH);
-          baseCtx.clearRect(0, 0, prevW, prevH);
-          baseCtx.drawImage(img, 0, 0, prevW, prevH);
-          const afterData = baseCtx.getImageData(0, 0, prevW, prevH);
-          baselineImage = afterData;
-          canvasInfo.textContent = `${img.width} × ${img.height}`;
-          URL.revokeObjectURL(url);
-          resetAdjustments(/* suppressApply */ true);
-          const label = method === 'lanczos' ? 'Upscale (LANCZOS fallback)' : 'Upscale';
-          pushHistory(label);
-          showBeforeAfter(beforeData, afterData);
-          if (method === 'lanczos') {
-            showToast('Upscaled (LANCZOS fallback — ESRGAN not loaded on server)', 'error');
-          } else {
-            showToast('Upscaled ✓', 'success');
-          }
-          return;
-        }
-
-        // remove-bg / blur-bg: canvas takes the returned image's size
-        setupCanvases(img.width, img.height);
+        // Preserve the current zoom level across every AI tool so the canvas
+        // doesn't visually jump. Canvas bitmap always matches the returned
+        // image's native size (so upscale keeps its real 4x pixels).
+        setupCanvases(img.width, img.height, /* preserveDisplay */ true);
         baseCtx.clearRect(0, 0, img.width, img.height);
         baseCtx.drawImage(img, 0, 0);
-        const afterData = baseCtx.getImageData(0, 0, imageW, imageH);
+        const afterData = baseCtx.getImageData(0, 0, img.width, img.height);
         baselineImage = afterData;
         canvasInfo.textContent = `${img.width} × ${img.height}`;
         URL.revokeObjectURL(url);
         resetAdjustments(/* suppressApply */ true);
-        pushHistory(cfg.title.replace('…', ''));
-        showBeforeAfter(beforeData, afterData);
-        showToast(cfg.title.replace('…', '') + ' ✓', 'success');
+
+        // For the before/after slider, rescale beforeData to the new dimensions
+        // if they differ (happens on upscale). This keeps the slider aligned.
+        let beforeForSlider = beforeData;
+        if (beforeData.width !== img.width || beforeData.height !== img.height) {
+          const tmp = document.createElement('canvas');
+          tmp.width = beforeData.width; tmp.height = beforeData.height;
+          tmp.getContext('2d').putImageData(beforeData, 0, 0);
+          const scaled = document.createElement('canvas');
+          scaled.width = img.width; scaled.height = img.height;
+          const sctx = scaled.getContext('2d');
+          sctx.imageSmoothingEnabled = true;
+          sctx.imageSmoothingQuality = 'high';
+          sctx.drawImage(tmp, 0, 0, img.width, img.height);
+          beforeForSlider = sctx.getImageData(0, 0, img.width, img.height);
+        }
+
+        const label = tool === 'upscale'
+          ? (method === 'lanczos' ? 'Upscale (LANCZOS fallback)' : `Upscale ×${Math.round(img.width / prevW)}`)
+          : cfg.title.replace('…', '');
+        pushHistory(label);
+        showBeforeAfter(beforeForSlider, afterData);
+
+        if (tool === 'upscale' && method === 'lanczos') {
+          showToast('Upscaled (LANCZOS fallback — ESRGAN not loaded on server)', 'error');
+        } else {
+          showToast(label + ' ✓', 'success');
+        }
       };
       img.src = url;
 
