@@ -423,14 +423,23 @@
    * ================================================================== */
   function bindAdjustments() {
     [
-      ['adj-brightness', 'adj-brightness-val', v => { adjBrightness = v; applyAdj(); }],
-      ['adj-contrast',   'adj-contrast-val',   v => { adjContrast   = v; applyAdj(); }],
-      ['adj-saturation', 'adj-saturation-val', v => { adjSaturation = v; applyAdj(); }],
-      ['adj-blur',       'adj-blur-val',       v => { adjBlur       = v; applyAdj(); }],
-    ].forEach(([id, vid, cb]) => {
+      ['adj-brightness', 'adj-brightness-val', 'Brightness', v => { adjBrightness = v; applyAdj(); }],
+      ['adj-contrast',   'adj-contrast-val',   'Contrast',   v => { adjContrast   = v; applyAdj(); }],
+      ['adj-saturation', 'adj-saturation-val', 'Saturation', v => { adjSaturation = v; applyAdj(); }],
+      ['adj-blur',       'adj-blur-val',       'Blur',       v => { adjBlur       = v; applyAdj(); }],
+    ].forEach(([id, vid, label, cb]) => {
       const s = document.getElementById(id);
       const v = document.getElementById(vid);
+      let prevVal = +s.value;
+      // Live preview while dragging
       s.addEventListener('input', () => { v.textContent = s.value; cb(+s.value); });
+      // Snapshot to history on release (so undo can revert to prev state)
+      s.addEventListener('change', () => {
+        if (+s.value !== prevVal && imageLoaded) {
+          pushHistory(label + ' ' + (s.value > 0 ? '+' : '') + s.value);
+          prevVal = +s.value;
+        }
+      });
     });
   }
 
@@ -500,6 +509,21 @@
       label,
       data: baseCtx.getImageData(0, 0, imageW, imageH),
       w: imageW, h: imageH,
+      adj: {
+        brightness: adjBrightness,
+        contrast:   adjContrast,
+        saturation: adjSaturation,
+        blur:       adjBlur,
+      },
+      // baseline captures the "pre-adjustment" pixel state so undo can
+      // restore what the image looked like before the adjustments were baked.
+      baseline: baselineImage
+        ? new ImageData(
+            new Uint8ClampedArray(baselineImage.data),
+            baselineImage.width,
+            baselineImage.height,
+          )
+        : null,
     });
     if (history.length > HISTORY_MAX) history.shift();
     historyIdx = history.length - 1;
@@ -519,9 +543,38 @@
     if (s.w !== imageW || s.h !== imageH) {
       setupCanvases(s.w, s.h);
     }
+    // Restore the pre-adjustment baseline so re-applying sliders works correctly
+    if (s.baseline) {
+      baselineImage = new ImageData(
+        new Uint8ClampedArray(s.baseline.data),
+        s.baseline.width,
+        s.baseline.height,
+      );
+    } else {
+      baselineImage = s.data;
+    }
+    // Restore slider values (without retriggering input events)
+    if (s.adj) {
+      adjBrightness = s.adj.brightness;
+      adjContrast   = s.adj.contrast;
+      adjSaturation = s.adj.saturation;
+      adjBlur       = s.adj.blur;
+      const setSlider = (id, vid, val) => {
+        const el = document.getElementById(id);
+        const vl = document.getElementById(vid);
+        if (el) el.value = val;
+        if (vl) vl.textContent = val;
+      };
+      setSlider('adj-brightness', 'adj-brightness-val', adjBrightness);
+      setSlider('adj-contrast',   'adj-contrast-val',   adjContrast);
+      setSlider('adj-saturation', 'adj-saturation-val', adjSaturation);
+      setSlider('adj-blur',       'adj-blur-val',       adjBlur);
+    } else {
+      adjBrightness = adjContrast = adjSaturation = adjBlur = 0;
+    }
+    // Paint the saved pixel state
     baseCtx.putImageData(s.data, 0, 0);
-    baselineImage = s.data;
-    resetAdjustments(/* suppressApply */ true);
+    baseCanvas.style.filter = adjBlur > 0 ? `blur(${adjBlur * 0.5}px)` : '';
     removeBeforeAfter();
     renderHistory();
   }
