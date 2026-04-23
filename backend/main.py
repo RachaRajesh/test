@@ -75,10 +75,6 @@ async def unhandled_exc(_req, exc):
     return JSONResponse(status_code=500, content={"error": str(exc)})
 
 # --- Endpoints ---------------------------------------------------------
-@app.get("/")
-def root():
-    return {"status": "PixelAI API is running", "version": app.version}
-
 @app.get("/health")
 def health():
     info = {"status": "ok", "cuda_available": False, "device": "CPU", "models": {}}
@@ -102,3 +98,21 @@ def health():
     except Exception:
         info["models"]["realesrgan"] = {"available": False}
     return info
+
+@app.get("/api")
+def api_root():
+    return {"status": "PixelAI API is running", "version": app.version}
+
+# --- Frontend -----------------------------------------------------------
+# Serve the static frontend from ../frontend at the root URL.
+# Put this LAST so it doesn't swallow /api/* or /health routes.
+_frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
+if os.path.isdir(_frontend_dir):
+    app.mount("/", StaticFiles(directory=_frontend_dir, html=True), name="frontend")
+    log.info(f"Serving frontend from: {os.path.abspath(_frontend_dir)}")
+else:
+    log.warning(f"Frontend directory not found at {_frontend_dir} — skipping static mount")
+    @app.get("/")
+    def root():
+        return {"status": "PixelAI API is running", "version": app.version,
+                "note": "Frontend directory not found. Open frontend/index.html directly."}
