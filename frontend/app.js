@@ -7,7 +7,11 @@
    *  or a different port) via the server config in the topbar.
    * ====================================================================== */
   const LS_KEY = 'pixelai_api_base';
-  const DEFAULT_API_BASE = 'http://localhost:8000';
+  // If the frontend is served over http(s) (not file://), default API to same origin.
+  // Otherwise fall back to localhost for dev-mode where index.html is opened directly.
+  const DEFAULT_API_BASE = (location.protocol === 'http:' || location.protocol === 'https:')
+    ? location.origin
+    : 'http://localhost:8000';
   let API_BASE = (localStorage.getItem(LS_KEY) || DEFAULT_API_BASE).replace(/\/+$/, '');
 
   /* ── DOM refs ─────────────────────────────────────────────── */
@@ -433,13 +437,19 @@
       let prevVal = +s.value;
       // Live preview while dragging
       s.addEventListener('input', () => { v.textContent = s.value; cb(+s.value); });
-      // Snapshot to history on release (so undo can revert to prev state)
-      s.addEventListener('change', () => {
+      // Snapshot history when user stops interacting (multiple triggers to be reliable)
+      const snapshot = () => {
         if (+s.value !== prevVal && imageLoaded) {
           pushHistory(label + ' ' + (s.value > 0 ? '+' : '') + s.value);
           prevVal = +s.value;
         }
-      });
+      };
+      s.addEventListener('change', snapshot);
+      s.addEventListener('pointerup', snapshot);
+      s.addEventListener('mouseup', snapshot);
+      s.addEventListener('touchend', snapshot);
+      s.addEventListener('keyup', snapshot);
+      s.addEventListener('blur', snapshot);
     });
   }
 
