@@ -63,7 +63,7 @@
 
     document.getElementById('save-btn').addEventListener('click', saveImage);
     document.getElementById('new-btn').addEventListener('click', newCanvas);
-    document.getElementById('reset-adj-btn').addEventListener('click', resetAdjustments);
+    document.getElementById('reset-adj-btn').addEventListener('click', resetAllToOriginal);
     document.getElementById('undo-btn').addEventListener('click', undo);
     document.getElementById('redo-btn').addEventListener('click', redo);
 
@@ -471,6 +471,24 @@
     if (!suppressApply && baselineImage && imageLoaded) {
       baseCtx.putImageData(baselineImage, 0, 0);
     }
+  }
+
+  // Full reset: jump to the first history entry (original upload) and clear
+  // all adjustment sliders. This wipes any AI operations performed since upload.
+  function resetAllToOriginal() {
+    if (!imageLoaded || history.length === 0) {
+      showToast('No image loaded', 'error');
+      return;
+    }
+    if (historyIdx === 0 && adjBrightness === 0 && adjContrast === 0
+        && adjSaturation === 0 && adjBlur === 0) {
+      showToast('Already at original', 'info');
+      return;
+    }
+    // Jump history pointer to the original upload
+    historyIdx = 0;
+    restore(0);  // restore already calls resetAdjustments(suppressApply=true)
+    showToast('Reset to original ✓', 'success');
   }
 
   /* ====================================================================
